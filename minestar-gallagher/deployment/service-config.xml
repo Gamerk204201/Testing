@@ -1,0 +1,25 @@
+<service>
+    <id>SEME-MineStar-Gallagher</id>
+    <name>SEME MineStar–Gallagher Integration</name>
+    <description>MineStar to Gallagher AOZ competency sync service</description>
+    
+    <executable>C:\Program Files\SEME\MineStarGallagher\venv\Scripts\python.exe</executable>
+    <arguments>src\main.py</arguments>
+    
+    <logpath>C:\ProgramData\SEME\MineStarGallagher\logs</logpath>
+    <logmode>rotate</logmode>
+    
+    <startmode>Automatic</startmode>
+    <delayedAutoStart>true</delayedAutoStart>
+    
+    <onfailure>
+        <restart delay="60 sec"/>
+        <restart delay="120 sec"/>
+        <restart delay="300 sec"/>
+    </onfailure>
+    
+    <env>
+        <name>PYTHONUNBUFFERED</name>
+        <value>1</value>
+    </env>
+</service>
