@@ -1,6 +1,8 @@
 """
 Gallagher client – controls AOZ_MINESTAR_AUTHORISED competency
 on vehicle cardholders.
+
+Supports dry-run mode (logs intended actions without calling the API).
 """
 
 from __future__ import annotations
@@ -29,11 +31,11 @@ class GallagherError(Exception):
 
 
 class GallagherClient:
-    def __init__(self):
+    def __init__(self, dry_run: bool | None = None) -> None:
         self.base_url = settings.gallagher_base_url.rstrip("/")
         self.api_key = settings.gallagher_api_key
+        self.dry_run = settings.dry_run if dry_run is None else dry_run
 
-        # Default to False for internal servers (change later if you have proper CA)
         verify_ssl = getattr(settings, "gallagher_verify_ssl", False)
 
         self.client = httpx.AsyncClient(
@@ -48,9 +50,12 @@ class GallagherClient:
         )
         self._competency_href: Optional[str] = None
 
-    async def close(self):
+    async def close(self) -> None:
         await self.client.aclose()
 
+    # ------------------------------------------------------------------
+    # Low-level helpers
+    # ------------------------------------------------------------------
 
     async def _get(self, path: str) -> dict:
         resp = await self.client.get(path)
@@ -63,16 +68,21 @@ class GallagherClient:
         return resp.json() if resp.content else {}
 
     async def _get_competency_href(self) -> str:
-        if self._competency_href:
+        if self._competency_href is not None:
             return self._competency_href
 
         data = await self._get("/api/competencies")
         for item in data.get("results", []):
             if item.get("name") == COMPETENCY_NAME:
-                self._competency_href = item["href"]
-                return self._competency_href
+                href = item.get("href")
+                if not isinstance(href, str):
+                    raise GallagherError(
+                        f"Competency '{COMPETENCY_NAME}' has an invalid href in Gallagher"
+                    )
+                self._competency_href = href
+                return href
 
-        raise GallagherError(f"Competency '{COMPETENCY_NAME}' not found")
+        raise GallagherError(f"Competency '{COMPETENCY_NAME}' not found in Gallagher")
 
     async def get_cardholder(self, cardholder_id: str) -> dict:
         return await self._get(f"/api/cardholders/{cardholder_id}")
@@ -89,9 +99,14 @@ class GallagherClient:
             if comp.get("href") == competency_href:
                 return link.get("href")
             # Fallback for older response shapes
-            if link.get("href") and competency_href.split("/")[-1] in link.get("href", ""):
-                return link.get("href")
+            link_href = link.get("href")
+            if link_href and competency_href.split("/")[-1] in str(link_href):
+                return link_href
         return None
+
+    # ------------------------------------------------------------------
+    # Public method
+    # ------------------------------------------------------------------
 
     @retry(
         stop=stop_after_attempt(4),
@@ -107,7 +122,26 @@ class GallagherClient:
         expiry_minutes: int = 15,
         reason: str = "MineStar update",
     ) -> bool:
+        """
+        Enable, renew, or disable AOZ_MINESTAR_AUTHORISED on a vehicle cardholder.
+        When dry_run=True, only logs the intended action.
+        """
+        if self.dry_run:
+            action = "ENABLE" if authorised else "DISABLE"
+            logger.info(
+                "[DRY-RUN] Would %s competency on cardholder %s (reason: %s, expiry: %s min)",
+                action,
+                gallagher_cardholder_id,
+                reason,
+                expiry_minutes if authorised else "n/a",
+            )
+            print(
+                f"[DRY-RUN] Would {action} AOZ_MINESTAR_AUTHORISED "
+                f"on cardholder {gallagher_cardholder_id}"
+            )
+            return True
 
+        # ----- real path -----
         competency_href = await self._get_competency_href()
         cardholder = await self.get_cardholder(gallagher_cardholder_id)
         existing_link = await self.find_competency_link(cardholder, competency_href)
@@ -116,7 +150,6 @@ class GallagherClient:
             expiry = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
 
             if existing_link:
-                # Renew / re-enable
                 payload = {
                     "competencies": {
                         "update": [
@@ -130,7 +163,6 @@ class GallagherClient:
                 }
                 action = "renewed"
             else:
-                # Add new
                 payload = {
                     "competencies": {
                         "add": [
@@ -171,7 +203,8 @@ class GallagherClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 409:
                 logger.warning(
-                    "gallagher.cardholder_locked vehicle=%s", gallagher_cardholder_id
+                    "gallagher.cardholder_locked vehicle=%s",
+                    gallagher_cardholder_id,
                 )
                 raise
             logger.error(

@@ -10,7 +10,12 @@ class Settings(BaseSettings):
     gallagher_verify_ssl: bool = False          # set True once you have proper certificates
 
     # ------------------------------------------------------------------
-    # MineStar (will be filled in later when you get VM access)
+    # Dry-run mode (no real Gallagher calls)
+    # ------------------------------------------------------------------
+    dry_run: bool = False                       # True = log only, False = real API calls
+
+    # ------------------------------------------------------------------
+    # MineStar (fill in later when you get VM access)
     # ------------------------------------------------------------------
     mine_star_sql_connection: str = (
         "DRIVER={SQL Server};"
