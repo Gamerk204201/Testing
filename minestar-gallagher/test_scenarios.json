@@ -1,0 +1,26 @@
+[
+  {
+    "vehicle": "LOADER15",
+    "operator": "DRIVER1",
+    "competent": true,
+    "reason": "MineStar: operator competent for vehicle"
+  },
+  {
+    "vehicle": "HAUL12",
+    "operator": "DRIVER2",
+    "competent": false,
+    "reason": "MineStar: operator not competent for vehicle"
+  },
+  {
+    "vehicle": "EXCAV03",
+    "operator": "DRIVER3",
+    "competent": true,
+    "reason": "MineStar: operator competent for vehicle"
+  },
+  {
+    "vehicle": "GRADER07",
+    "operator": "DRIVER4",
+    "competent": false,
+    "reason": "MineStar: operator logged out or not authorised"
+  }
+]
